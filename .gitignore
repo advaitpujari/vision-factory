@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Output directories
+/output/
+/output.json
+/input/processed_json/
+
+# IDEs
+.idea/
+.vscode/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
