@@ -47,8 +47,15 @@ pip install git+https://github.com/advaitpujari/vision-factory.git
 The pipeline requires API credentials. Create a `.env` file in the root directory (or use your system environment variables) with the following structure:
 
 ```env
-# AI Provider (e.g., Google Gemini or DeepInfra)
-GEMINI_API_KEY=your_gemini_api_key
+# AI Provider Configuration
+API_PROVIDER=deepinfra
+API_PROVIDER_URL=https://api.deepinfra.com/v1/openai
+
+VISION_API_KEY=your_vision_api_key
+VISION_MODEL_NAME=meta-llama/Llama-3.2-11B-Vision-Instruct
+
+TEXT_API_KEY=your_text_api_key
+TEXT_MODEL_NAME=meta-llama/Meta-Llama-3.1-8B-Instruct
 
 # AWS Configuration for Uploading Assets
 AWS_ACCESS_KEY_ID=your_aws_key

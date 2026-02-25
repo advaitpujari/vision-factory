@@ -35,19 +35,19 @@ class DeepInfraClient:
             
     def _configure_google(self):
         try:
-            genai.configure(api_key=settings.GEMINI_VISION_API_KEY)
-            self.vision_model_id = settings.VISION_MODEL_ID
-            self.text_model_id = settings.TEXT_MODEL_ID
-            self.vision_key = settings.GEMINI_VISION_API_KEY
-            self.text_key = settings.GEMINI_TEXT_API_KEY
+            genai.configure(api_key=settings.VISION_API_KEY)
+            self.vision_model_id = settings.VISION_MODEL_NAME or "gemini-1.5-pro-latest"
+            self.text_model_id = settings.TEXT_MODEL_NAME or "gemini-1.5-flash"
+            self.vision_key = settings.VISION_API_KEY
+            self.text_key = settings.TEXT_API_KEY
         except Exception as e:
             logger.error(f"Failed to configure Google Gemini: {e}")
 
     def _configure_deepinfra(self):
-        self.api_key = settings.DEEPINFRA_API_KEY
-        self.base_url = settings.DEEPINFRA_BASE_URL
-        self.vision_model_id = settings.DEEPINFRA_VISION_MODEL
-        self.text_model_id = settings.DEEPINFRA_TEXT_MODEL
+        self.api_key = settings.VISION_API_KEY # Assuming same key for both
+        self.base_url = settings.API_PROVIDER_URL
+        self.vision_model_id = settings.VISION_MODEL_NAME or "meta-llama/Llama-3.2-11B-Vision-Instruct"
+        self.text_model_id = settings.TEXT_MODEL_NAME or "meta-llama/Meta-Llama-3-70B-Instruct"
         
         if not self.api_key:
              logger.error("DeepInfra API Key missing!")
