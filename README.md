@@ -28,7 +28,7 @@ brew install poppler
 
 Clone the repository and install it in editable mode:
 ```bash
-git clone https://github.com/YOUR_USERNAME/vision-factory.git
+git clone https://github.com/advaitpujari/vision-factory.git
 cd vision-factory
 pip install -e .
 ```
@@ -37,7 +37,7 @@ pip install -e .
 
 You can pip install this package directly from GitHub into any other project:
 ```bash
-pip install git+https://github.com/YOUR_USERNAME/vision-factory.git
+pip install git+https://github.com/advaitpujari/vision-factory.git
 ```
 
 ---
