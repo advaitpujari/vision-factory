@@ -9,14 +9,14 @@ FROM public.ecr.aws/lambda/python:3.11
 # poppler-utils  → required by pdf2image (pdftoppm / pdfinfo binaries)
 # gcc / libffi   → occasionally needed by Python C-extension wheels
 # ──────────────────────────────────────────────────────────────────────────────
-RUN dnf install -y \
+RUN yum install -y \
         poppler-utils \
         poppler \
         gcc \
         libffi \
         libffi-devel \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf
+    && yum clean all \
+    && rm -rf /var/cache/yum
 
 # ── Python dependencies ────────────────────────────────────────────────────────
 # Copy requirements first to leverage Docker layer caching.
