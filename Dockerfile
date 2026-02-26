@@ -26,10 +26,10 @@ RUN yum install -y \
 # ──────────────────────────────────────────────────────────────────────────────
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir \
-        $(grep -Ev '^\s*(#|pytest|black|flake8|$)' ${LAMBDA_TASK_ROOT}/requirements.txt) \
-    # Install the vision_factory package itself in editable-less mode
+RUN sed -e '/pytest/d' -e '/black/d' -e '/flake8/d' ${LAMBDA_TASK_ROOT}/requirements.txt > /tmp/req_prod.txt \
+    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /tmp/req_prod.txt \
+    && rm /tmp/req_prod.txt \
     && echo "Dependencies installed."
 
 # ── Application code ───────────────────────────────────────────────────────────
