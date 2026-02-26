@@ -1,0 +1,96 @@
+name: Deploy to AWS Lambda
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Trigger: every push to the 'main' branch.
+# You can also add:  pull_request: { branches: [main] }  to validate PRs
+# without deploying (skip the last two steps for PRs).
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+
+# Cancel any in-progress run for the same branch so we never deploy a stale
+# image if two commits land in quick succession.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build · Push · Deploy
+    runs-on: ubuntu-latest
+
+    # Permissions needed for OIDC-based AWS auth (if you switch to OIDC later)
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Configure AWS credentials ─────────────────────────────────────────
+      # Reads AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from GitHub Secrets.
+      # AWS_REGION is stored as a GitHub Variable (not a secret) — see README.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ vars.AWS_REGION }}
+
+      # ── 3. Log in to Amazon ECR ───────────────────────────────────────────────
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── 4. Build, tag, and push Docker image to ECR ───────────────────────────
+      # IMAGE_TAG uses the short Git SHA so every commit produces a unique,
+      # traceable image. 'latest' is also updated for convenience.
+      - name: Build and push Docker image
+        id: build-push
+        env:
+          ECR_REGISTRY:   ${{ vars.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG:      ${{ github.sha }}
+        run: |
+          FULL_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          LATEST_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+          echo "Building image: ${FULL_IMAGE}"
+          docker build \
+            --tag "${FULL_IMAGE}" \
+            --tag "${LATEST_IMAGE}" \
+            --file Dockerfile \
+            .
+
+          echo "Pushing image to ECR…"
+          docker push "${FULL_IMAGE}"
+          docker push "${LATEST_IMAGE}"
+
+          # Export the full URI so the next step can reference it cleanly
+          echo "image_uri=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      # ── 5. Update Lambda function with the new image ──────────────────────────
+      # aws lambda update-function-code replaces the image atomically.
+      # The --publish flag creates a new numbered version of the function.
+      - name: Update Lambda function code
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+          IMAGE_URI:            ${{ steps.build-push.outputs.image_uri }}
+        run: |
+          echo "Updating Lambda '${LAMBDA_FUNCTION_NAME}' → ${IMAGE_URI}"
+
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri     "${IMAGE_URI}" \
+            --publish
+
+          # Wait until the update is fully applied before finishing the run
+          echo "Waiting for update to propagate…"
+          aws lambda wait function-updated \
+            --function-name "${LAMBDA_FUNCTION_NAME}"
+
+          echo "✅ Lambda function updated successfully."
