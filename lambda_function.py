@@ -22,6 +22,8 @@ import urllib.request
 import urllib.error
 from typing import Any, Dict
 
+import shutil
+
 # Configure logging for Lambda (stdout goes to CloudWatch)
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
@@ -74,33 +76,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # ------------------------------------------------------------------
     # 2. Materialise PDF to a Temporary File
     # ------------------------------------------------------------------
+    # Create the directory manually so we can explicitly invoke shutil.rmtree later
+    tmp_dir = tempfile.mkdtemp(prefix="vision_factory_")
+    
+    # Change the current working directory to /tmp for this execution.
+    # This prevents 'PermissionError: Read-only file system' if the core 
+    # pipeline attempts to write logs or cache files to relative paths (like 'output/').
+    original_cwd = os.getcwd()
+    os.chdir(tmp_dir)
+
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            input_pdf_path = os.path.join(tmp_dir, f"{filename}.pdf")
-            output_json_path = os.path.join(tmp_dir, f"{filename}.json")
+        input_pdf_path = os.path.join(tmp_dir, f"{filename}.pdf")
+        output_json_path = os.path.join(tmp_dir, f"{filename}.json")
 
-            if pdf_base64:
-                logger.info("Decoding base64-encoded PDF (%s)…", filename)
-                pdf_bytes = _decode_base64_pdf(pdf_base64)
-            else:
-                logger.info("Downloading PDF from URL: %s", pdf_url)
-                pdf_bytes = _download_pdf(pdf_url)
+        if pdf_base64:
+            logger.info("Decoding base64-encoded PDF (%s)…", filename)
+            pdf_bytes = _decode_base64_pdf(pdf_base64)
+        else:
+            logger.info("Downloading PDF from URL: %s", pdf_url)
+            pdf_bytes = _download_pdf(pdf_url)
 
-            with open(input_pdf_path, "wb") as f:
-                f.write(pdf_bytes)
+        with open(input_pdf_path, "wb") as f:
+            f.write(pdf_bytes)
 
-            logger.info("PDF written to %s (%d bytes)", input_pdf_path, len(pdf_bytes))
+        logger.info("PDF written to %s (%d bytes)", input_pdf_path, len(pdf_bytes))
 
-            # ----------------------------------------------------------
-            # 3. Run the Vision Factory Pipeline
-            # ----------------------------------------------------------
-            result_payload = _run_pipeline(input_pdf_path, output_json_path, tmp_dir)
+        # ----------------------------------------------------------
+        # 3. Run the Vision Factory Pipeline
+        # ----------------------------------------------------------
+        result_payload = _run_pipeline(input_pdf_path, output_json_path, tmp_dir)
 
-            return {
-                "statusCode": 200,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps(result_payload),
-            }
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps(result_payload),
+        }
 
     except _InputError as exc:
         logger.error("Input error: %s", exc)
@@ -113,6 +123,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as exc:  # pragma: no cover
         logger.exception("Unexpected error: %s", exc)
         return _error_response(500, f"Internal server error: {exc}")
+
+    finally:
+        # Restore the original working directory
+        os.chdir(original_cwd)
+        
+        # AWS Lambda Best Practice: explicitly empty and delete the /tmp directory 
+        # so it doesn't accumulate data across multiple runs on warm containers.
+        if os.path.exists(tmp_dir):
+            try:
+                shutil.rmtree(tmp_dir)
+                logger.info("Successfully cleaned up /tmp directory: %s", tmp_dir)
+            except Exception as e:
+                logger.error("Failed to clean up /tmp directory %s: %s", tmp_dir, e)
 
 
 # ---------------------------------------------------------------------------
