@@ -64,9 +64,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # ------------------------------------------------------------------
     # 1. Parse Input
     # ------------------------------------------------------------------
-    pdf_base64: str = event.get("pdf_base64", "")
-    pdf_url: str = event.get("pdf_url", "")
-    filename: str = event.get("filename", "document")
+    # If invoked via API Gateway / Function URL, the actual payload is a string in "body"
+    payload = event
+    if "body" in event and isinstance(event["body"], str):
+        try:
+            payload = json.loads(event["body"])
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to parse event body as JSON: %s", exc)
+            return _error_response(400, f"Malformed JSON body: {exc}", log_stream.getvalue())
+    elif "body" in event and isinstance(event["body"], dict):
+        payload = event["body"]
+
+    pdf_base64: str = payload.get("pdf_base64", "")
+    pdf_url: str = payload.get("pdf_url", "")
+    filename: str = payload.get("filename", "document")
 
     # Strip any path components from the provided filename for safety
     filename = os.path.basename(filename) or "document"
