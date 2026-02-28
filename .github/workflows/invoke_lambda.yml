@@ -1,0 +1,32 @@
+name: Invoke Lambda and Fetch Logs
+on:
+  workflow_dispatch:
+jobs:
+  invoke-lambda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Create Dummy Payload
+        run: |
+          echo '{"pdf_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"}' > payload.json
+      - name: Invoke Lambda
+        run: |
+          aws lambda invoke \
+            --function-name ${{ vars.LAMBDA_FUNCTION_NAME }} \
+            --payload fileb://payload.json \
+            --log-type Tail \
+            --cli-binary-format raw-in-base64-out \
+            response.json > invoke_metadata.json
+          
+          echo "Metadata:"
+          cat invoke_metadata.json
+          echo "Response:"
+          cat response.json
+          echo "Logs:"
+          jq -r '.LogResult' invoke_metadata.json | base64 --decode
