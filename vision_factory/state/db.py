@@ -1,5 +1,6 @@
 
 import sqlite3
+import os
 import json
 import logging
 import hashlib
@@ -11,6 +12,10 @@ logger = logging.getLogger(__name__)
 class BatchDatabase:
     def __init__(self, db_path: str = "output/batch_state.db"):
         self.db_path = db_path
+        # Ensure the directory exists
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self._init_db()
 
     def _get_connection(self):
@@ -19,7 +24,9 @@ class BatchDatabase:
     def _init_db(self):
         try:
             with self._get_connection() as conn:
-                with open("src/state/schema.sql", "r") as f:
+                # Use absolute path for schema.sql relative to this file
+                schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
+                with open(schema_path, "r") as f:
                     conn.executescript(f.read())
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
