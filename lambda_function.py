@@ -24,11 +24,19 @@ from typing import Any, Dict
 
 import shutil
 
-# Configure logging for Lambda (stdout goes to CloudWatch)
+import io
+
+# Create a string buffer to capture logs
+log_stream = io.StringIO()
+
+# Configure logging for Lambda (stdout goes to CloudWatch PLUS our log_stream)
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s %(name)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(log_stream)
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -106,6 +114,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # ----------------------------------------------------------
         result_payload = _run_pipeline(input_pdf_path, output_json_path, tmp_dir)
 
+        # Append execution logs to successful payload
+        result_payload["execution_logs"] = log_stream.getvalue()
+
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
@@ -114,17 +125,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except _InputError as exc:
         logger.error("Input error: %s", exc)
-        return _error_response(400, str(exc))
+        return _error_response(400, str(exc), log_stream.getvalue())
 
     except _PipelineError as exc:
         logger.error("Pipeline error: %s", exc)
-        return _error_response(500, f"Pipeline processing failed: {exc}")
+        return _error_response(500, f"Pipeline processing failed: {exc}", log_stream.getvalue())
 
     except Exception as exc:  # pragma: no cover
         logger.exception("Unexpected error: %s", exc)
-        return _error_response(500, f"Internal server error: {exc}")
+        return _error_response(500, f"Internal server error: {exc}", log_stream.getvalue())
 
     finally:
+        # Clear the log stream for the next warm lambda invocation
+        log_stream.truncate(0)
+        log_stream.seek(0)
+        
         # Restore the original working directory
         os.chdir(original_cwd)
         
@@ -221,10 +236,13 @@ def _run_pipeline(pdf_path: str, output_json_path: str, tmp_dir: str) -> Dict[st
     }
 
 
-def _error_response(status_code: int, message: str) -> Dict[str, Any]:
+def _error_response(status_code: int, message: str, execution_logs: str = "") -> Dict[str, Any]:
     """Build a standard error response dict."""
     return {
         "statusCode": status_code,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": message}),
+        "body": json.dumps({
+            "error": message,
+            "execution_logs": execution_logs
+        }),
     }
