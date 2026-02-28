@@ -23,6 +23,7 @@ import urllib.error
 from typing import Any, Dict
 
 import shutil
+import glob
 
 import io
 
@@ -60,6 +61,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     logger.info("Lambda invocation received.")
     logger.debug("Event keys: %s", list(event.keys()))
+
+    # ------------------------------------------------------------------
+    # 0. Pre-Execution Cleanup
+    # ------------------------------------------------------------------
+    # Preemptively clean up any left-over tmp directories from a prior 
+    # crashed invocation (e.g., OOM) to free up disk space in warm containers.
+    try:
+        stale_dirs = glob.glob("/tmp/vision_factory_*")
+        for p in stale_dirs:
+            shutil.rmtree(p, ignore_errors=True)
+            logger.info("Pre-cleanup: removed stale directory %s", p)
+    except Exception as e:
+        logger.warning("Pre-cleanup: failed to clean /tmp: %s", e)
 
     # ------------------------------------------------------------------
     # 1. Parse Input
