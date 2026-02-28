@@ -98,6 +98,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Remove extension if caller accidentally included it
     filename = os.path.splitext(filename)[0]
 
+    if payload.get("debug"):
+        import sys
+        import platform
+        debug_info = {
+            "python_version": sys.version,
+            "architecture": platform.machine(),
+            "platform": sys.platform,
+        }
+        try:
+            import vision_factory.pipeline
+            debug_info["import_success"] = True
+        except Exception as e:
+            debug_info["import_error"] = str(e)
+            
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"debug_info": debug_info})
+        }
+
     if not pdf_base64 and not pdf_url:
         logger.warning("No PDF source provided in the event payload.")
         return _error_response(
