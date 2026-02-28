@@ -1,4 +1,3 @@
-import google.generativeai as genai
 import os
 import logging
 import base64
@@ -35,6 +34,7 @@ class DeepInfraClient:
             
     def _configure_google(self):
         try:
+            import google.generativeai as genai
             genai.configure(api_key=settings.VISION_API_KEY)
             self.vision_model_id = settings.VISION_MODEL_NAME or "gemini-1.5-pro-latest"
             self.text_model_id = settings.TEXT_MODEL_NAME or "gemini-1.5-flash"
@@ -126,6 +126,7 @@ class DeepInfraClient:
 
     # --- GOOGLE IMPLEMENTATION ---
     def _call_google_vision(self, image, prompt, cache_file):
+        import google.generativeai as genai
         genai.configure(api_key=self.vision_key)
         model = genai.GenerativeModel(self.vision_model_id)
         response = model.generate_content([prompt, image])
@@ -134,6 +135,7 @@ class DeepInfraClient:
         return cont
 
     def _call_google_text(self, content, system_prompt, cache_file):
+        import google.generativeai as genai
         genai.configure(api_key=self.text_key)
         model = genai.GenerativeModel(self.text_model_id)
         response = model.generate_content([system_prompt, content])
