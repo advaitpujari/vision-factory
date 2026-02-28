@@ -105,9 +105,28 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "python_version": sys.version,
             "architecture": platform.machine(),
             "platform": sys.platform,
+            "imports_successful": [],
+            "current_import": None,
         }
+        test_imports = [
+            "pdf2image",
+            "PIL",
+            "boto3",
+            "pydantic",
+            "requests",
+            "tenacity",
+            "google.generativeai",
+            "sqlite3",
+        ]
+        
         try:
+            for mod in test_imports:
+                debug_info["current_import"] = mod
+                __import__(mod)
+                debug_info["imports_successful"].append(mod)
+            debug_info["current_import"] = "vision_factory.pipeline"
             import vision_factory.pipeline
+            debug_info["imports_successful"].append("vision_factory.pipeline")
             debug_info["import_success"] = True
         except Exception as e:
             debug_info["import_error"] = str(e)
