@@ -193,11 +193,17 @@ class VisionPipeline:
         
         logger.info(f"Pipeline complete. Output saved to {output_path}")
 
+        # 6. Upload source PDF and generated JSON to S3
+        source_pdf_url = self.uploader.upload_file(pdf_path, doc_id, "source.pdf", "application/pdf")
+        source_json_url = self.uploader.upload_file(output_path, doc_id, "results.json", "application/json")
+
         return {
             "status": status,
             "total_pages": total_pages,
             "questions_found": len(all_questions),
-            "validation_issues": issues
+            "validation_issues": issues,
+            "source_pdf_url": source_pdf_url,
+            "source_json_url": source_json_url
         }
 
     def _process_assets(self, page_output: PageOutput, original_image, pdf_id: str, page_num: int):

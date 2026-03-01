@@ -47,3 +47,27 @@ class S3Uploader:
         except Exception as e:
             logger.error(f"Failed to upload asset {asset_name}: {e}")
             return None
+
+    def upload_file(self, file_path: str, pdf_id: str, filename: str, content_type: str) -> Optional[str]:
+        """
+        Uploads a raw file (PDF, JSON, etc) to S3 and returns the public URL.
+        """
+        try:
+            key = f"assets/{pdf_id}/{filename}"
+            with open(file_path, 'rb') as data:
+                self.s3_client.upload_fileobj(
+                    data,
+                    self.bucket,
+                    key,
+                    ExtraArgs={'ContentType': content_type}
+                )
+            
+            url = f"https://{self.bucket}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
+            logger.info(f"Uploaded file to {url}")
+            return url
+        except NoCredentialsError:
+            logger.error("AWS Credentials not found.")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to upload file {filename}: {e}")
+            return None
