@@ -2,14 +2,19 @@
 AWS Lambda Handler for Vision Factory PDF Processing Pipeline.
 
 Supported event shapes:
-  1. Base64-encoded PDF:
-     { "pdf_base64": "<base64 string>" }
+  1. Asynchronous Workflow (Direct S3 Upload + Webhook):
+     {
+       "s3_key": "inbox/...",
+       "webhook_url": "https://api.../webhooks/lambda-pdf",
+       "job_id": "uuid-...",
+       "filename": "document.pdf"
+     }
 
-  2. Public URL to a PDF:
-     { "pdf_url": "https://example.com/paper.pdf" }
+  2. Base64-encoded PDF:
+     { "pdf_base64": "<base64 string>", "filename": "document" }
 
-Optional fields:
-  - "filename": custom name used for output file (default: "document")
+  3. Public URL to a PDF:
+     { "pdf_url": "https://example.com/paper.pdf", "filename": "document" }
 """
 
 import json
@@ -26,9 +31,8 @@ import shutil
 import glob
 
 import io
-
-# Create a string buffer to capture logs
-log_stream = io.StringIO()
+import boto3
+import requests
 
 # Configure logging for Lambda (stdout goes to CloudWatch PLUS our log_stream)
 logging.basicConfig(
@@ -91,6 +95,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     pdf_base64: str = payload.get("pdf_base64", "")
     pdf_url: str = payload.get("pdf_url", "")
+    s3_key: str = payload.get("s3_key", "")
+    job_id: str = payload.get("job_id", "")
+    webhook_url: str = payload.get("webhook_url", "")
     filename: str = payload.get("filename", "document")
 
     # Strip any path components from the provided filename for safety
@@ -137,12 +144,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "body": json.dumps({"debug_info": debug_info})
         }
 
-    if not pdf_base64 and not pdf_url:
+    if not pdf_base64 and not pdf_url and not s3_key:
         logger.warning("No PDF source provided in the event payload.")
         return _error_response(
             400,
-            "Missing payload. Provide either 'pdf_base64' (base64-encoded PDF bytes) "
-            "or 'pdf_url' (a public URL pointing to a PDF).",
+            "Missing payload. Provide 's3_key', 'pdf_base64', or 'pdf_url'.",
         )
 
     # ------------------------------------------------------------------
@@ -161,17 +167,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         input_pdf_path = os.path.join(tmp_dir, f"{filename}.pdf")
         output_json_path = os.path.join(tmp_dir, f"{filename}.json")
 
-        if pdf_base64:
+        if s3_key:
+            logger.info("Downloading PDF from S3 Key: %s", s3_key)
+            bucket_name = os.getenv("AWS_S3_BUCKET_NAME", "pdf-to-json-database-creation")
+            s3_client = boto3.client("s3")
+            s3_client.download_file(bucket_name, s3_key, input_pdf_path)
+            logger.info("S3 PDF written to %s", input_pdf_path)
+        elif pdf_base64:
             logger.info("Decoding base64-encoded PDF (%s)…", filename)
             pdf_bytes = _decode_base64_pdf(pdf_base64)
+            with open(input_pdf_path, "wb") as f:
+                f.write(pdf_bytes)
+            logger.info("PDF written to %s (%d bytes)", input_pdf_path, len(pdf_bytes))
         else:
             logger.info("Downloading PDF from URL: %s", pdf_url)
             pdf_bytes = _download_pdf(pdf_url)
-
-        with open(input_pdf_path, "wb") as f:
-            f.write(pdf_bytes)
-
-        logger.info("PDF written to %s (%d bytes)", input_pdf_path, len(pdf_bytes))
+            with open(input_pdf_path, "wb") as f:
+                f.write(pdf_bytes)
+            logger.info("PDF written to %s (%d bytes)", input_pdf_path, len(pdf_bytes))
 
         # ----------------------------------------------------------
         # 3. Run the Vision Factory Pipeline
@@ -180,6 +193,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Append execution logs to successful payload
         result_payload["execution_logs"] = log_stream.getvalue()
+
+        # ----------------------------------------------------------
+        # 4. Asynchronous Webhook Delivery (if requested)
+        # ----------------------------------------------------------
+        if webhook_url and job_id:
+            logger.info("Initiating Webhook POST to %s", webhook_url)
+            try:
+                result_payload["job_id"] = job_id
+                resp = requests.post(webhook_url, json=result_payload, timeout=30)
+                resp.raise_for_status()
+                logger.info("Webhook delivered successfully. (Status: %s)", resp.status_code)
+            except Exception as e:
+                logger.error("Failed to POST results to webhook: %s", e)
+                # Ensure execution logs accurately reflect webhook failure
+                result_payload["execution_logs"] = log_stream.getvalue()
 
         return {
             "statusCode": 200,
