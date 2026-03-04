@@ -34,6 +34,9 @@ import io
 import boto3
 import requests
 
+# Store execution logs for appending to the final payload or error response
+log_stream = io.StringIO()
+
 # Configure logging for Lambda (stdout goes to CloudWatch PLUS our log_stream)
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
@@ -93,11 +96,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     elif "body" in event and isinstance(event["body"], dict):
         payload = event["body"]
 
+    # Extract webhook URL and job ID as early as possible so we can report fatal errors
+    webhook_url: str = payload.get("webhook_url", "")
+    job_id: str = payload.get("job_id", "")
+
     pdf_base64: str = payload.get("pdf_base64", "")
     pdf_url: str = payload.get("pdf_url", "")
     s3_key: str = payload.get("s3_key", "")
-    job_id: str = payload.get("job_id", "")
-    webhook_url: str = payload.get("webhook_url", "")
     filename: str = payload.get("filename", "document")
 
     # Strip any path components from the provided filename for safety
@@ -217,15 +222,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except _InputError as exc:
         logger.error("Input error: %s", exc)
-        return _error_response(400, str(exc), log_stream.getvalue())
+        return _error_response(400, str(exc), log_stream.getvalue(), webhook_url, job_id)
 
     except _PipelineError as exc:
         logger.error("Pipeline error: %s", exc)
-        return _error_response(500, f"Pipeline processing failed: {exc}", log_stream.getvalue())
+        return _error_response(500, f"Pipeline processing failed: {exc}", log_stream.getvalue(), webhook_url, job_id)
 
     except Exception as exc:  # pragma: no cover
         logger.exception("Unexpected error: %s", exc)
-        return _error_response(500, f"Internal server error: {exc}", log_stream.getvalue())
+        return _error_response(500, f"Internal server error: {exc}", log_stream.getvalue(), webhook_url, job_id)
 
     finally:
         # Clear the log stream for the next warm lambda invocation
@@ -328,13 +333,25 @@ def _run_pipeline(pdf_path: str, output_json_path: str, tmp_dir: str) -> Dict[st
     }
 
 
-def _error_response(status_code: int, message: str, execution_logs: str = "") -> Dict[str, Any]:
-    """Build a standard error response dict."""
+def _error_response(status_code: int, message: str, execution_logs: str = "", webhook_url: str = "", job_id: str = "") -> Dict[str, Any]:
+    """Build a standard error response dict and attempt to POST it to the webhook if provided."""
+    payload = {
+        "error": message,
+        "execution_logs": execution_logs
+    }
+    
+    if webhook_url and job_id:
+        payload["job_id"] = job_id
+        logger.info("Initiating error POST to Webhook URL: %s", webhook_url)
+        try:
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            resp.raise_for_status()
+            logger.info("Webhook successfully notified of failure. (Status: %s)", resp.status_code)
+        except Exception as e:
+            logger.error("Failed to notify webhook of error condition: %s", e)
+            
     return {
         "statusCode": status_code,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "error": message,
-            "execution_logs": execution_logs
-        }),
+        "body": json.dumps(payload),
     }
