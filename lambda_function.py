@@ -194,7 +194,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # ----------------------------------------------------------
         # 3. Run the Vision Factory Pipeline
         # ----------------------------------------------------------
-        result_payload = _run_pipeline(input_pdf_path, output_json_path, tmp_dir)
+        result_payload = _run_pipeline(input_pdf_path, output_json_path, tmp_dir, job_id, webhook_url)
 
         # Append execution logs to successful payload
         result_payload["execution_logs"] = log_stream.getvalue()
@@ -291,13 +291,40 @@ def _download_pdf(url: str) -> bytes:
         raise _InputError(f"Unexpected error downloading PDF: {exc}") from exc
 
 
-def _run_pipeline(pdf_path: str, output_json_path: str, tmp_dir: str) -> Dict[str, Any]:
+def _run_pipeline(pdf_path: str, output_json_path: str, tmp_dir: str, job_id: str = "", webhook_url: str = "") -> Dict[str, Any]:
     """
     Invoke the VisionPipeline and return a structured response dict.
 
     The pipeline writes a JSON file to ``output_json_path``; we read it back
     and include it along with pipeline run metadata in the response.
     """
+    progress_webhook_url = webhook_url.replace('/lambda-pdf', '/lambda-progress') if webhook_url else None
+    
+    def progress_callback(current: int, total: int, message: str):
+        if progress_webhook_url and job_id:
+            try:
+                payload = {
+                    "job_id": job_id,
+                    "progress": current,
+                    "total_pages": total,
+                    "message": message
+                }
+                resp = requests.post(progress_webhook_url, json=payload, timeout=5)
+                # Parse response carefully to avoid raising errors if the endpoint is silent, but strictly check for `{ cancelled: true }`
+                if resp.ok:
+                    try:
+                        data = resp.json()
+                        if data.get("cancelled"):
+                            logger.info("Cancellation signal received from webhook. Aborting pipeline.")
+                            raise _PipelineError("CancellationError: Job was cancelled by user.")
+                    except json.JSONDecodeError:
+                        pass
+                else:
+                    logger.warning("Progress webhook returned non-200. (Status: %s)", resp.status_code)
+            except _PipelineError:
+                raise # Re-raise immediately to break the pipeline loop
+            except Exception as e:
+                logger.warning("Failed to send progress update: %s", e)
     # Lazy import so that Lambda cold-start only loads heavy deps when needed
     try:
         from vision_factory.pipeline import VisionPipeline
@@ -309,7 +336,7 @@ def _run_pipeline(pdf_path: str, output_json_path: str, tmp_dir: str) -> Dict[st
 
     try:
         pipeline = VisionPipeline()
-        stats = pipeline.process_pdf(pdf_path, output_json_path)
+        stats = pipeline.process_pdf(pdf_path, output_json_path, progress_callback=progress_callback)
     except Exception as exc:
         raise _PipelineError(str(exc)) from exc
 
