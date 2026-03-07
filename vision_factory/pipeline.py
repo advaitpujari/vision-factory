@@ -26,7 +26,7 @@ class VisionPipeline:
         self.state_manager = StateManager()
         self.validator = JSONValidator()
 
-    def process_pdf(self, pdf_path: str, output_path: str):
+    def process_pdf(self, pdf_path: str, output_path: str, progress_callback=None):
         """
         Runs the full Vision-to-JSON pipeline on a PDF.
         """
@@ -65,11 +65,16 @@ class VisionPipeline:
 
         all_questions: List[Question] = []
         total_pages = len(images)
+        
+        if progress_callback:
+            progress_callback(0, total_pages, f"Found {total_pages} pages. Starting extraction...")
 
         # 2. Process Pages
         for i, image in enumerate(images):
             page_num = i + 1
             logger.info(f"Processing Page {page_num}/{total_pages}...")
+            if progress_callback:
+                progress_callback(i, total_pages, f"Scanning page {page_num} of {total_pages}...")
             
             try:
                 # Check DB for cache
@@ -194,6 +199,9 @@ class VisionPipeline:
         logger.info(f"Pipeline complete. Output saved to {output_path}")
 
         # 6. Upload source PDF and generated JSON to S3
+        if progress_callback:
+            progress_callback(total_pages, total_pages, "Uploading assets to storage...")
+        
         source_pdf_url = self.uploader.upload_file(pdf_path, doc_id, "source.pdf", "application/pdf")
         source_json_url = self.uploader.upload_file(output_path, doc_id, "results.json", "application/json")
 

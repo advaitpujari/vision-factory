@@ -1,0 +1,21 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "eb29d112790a92fe0a3f1b10c7b67468cb75b88d91fc47cd6c6042a743be5a45": {
+      "displayName": "VisionFactoryDashboard Template",
+      "source": {
+        "path": "VisionFactoryDashboard.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "202712151916-ap-south-1-54ef70eb": {
+          "bucketName": "cdk-hnb659fds-assets-202712151916-ap-south-1",
+          "objectKey": "eb29d112790a92fe0a3f1b10c7b67468cb75b88d91fc47cd6c6042a743be5a45.json",
+          "region": "ap-south-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::202712151916:role/cdk-hnb659fds-file-publishing-role-202712151916-ap-south-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

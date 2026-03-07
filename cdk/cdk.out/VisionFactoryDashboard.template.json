@@ -1,0 +1,220 @@
+{
+ "Resources": {
+  "PipelineErrorAlarm8A7D06EE": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmDescription": "One or more PDF processing jobs failed in the last 5 minutes. Check the LOG ERRORS widget below for the stack trace.",
+    "AlarmName": "vision-factory-processor-PipelineErrors",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 1,
+    "Metrics": [
+     {
+      "Id": "m1",
+      "Label": "Pipeline Errors (5m)",
+      "MetricStat": {
+       "Metric": {
+        "MetricName": "PipelineErrors",
+        "Namespace": "VisionFactory/Pipeline"
+       },
+       "Period": 300,
+       "Stat": "Sum"
+      },
+      "ReturnData": true
+     }
+    ],
+    "Threshold": 1,
+    "TreatMissingData": "notBreaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "VisionFactoryDashboard/PipelineErrorAlarm/Resource"
+   }
+  },
+  "LambdaErrorAlarm646BFA4C": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmDescription": "Lambda itself crashed (unhandled exception). This is worse than a pipeline error — check for memory/timeout issues.",
+    "AlarmName": "vision-factory-processor-LambdaCrashes",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 1,
+    "Metrics": [
+     {
+      "Id": "m1",
+      "Label": "Lambda Errors (5m)",
+      "MetricStat": {
+       "Metric": {
+        "Dimensions": [
+         {
+          "Name": "FunctionName",
+          "Value": "vision-factory-processor"
+         }
+        ],
+        "MetricName": "Errors",
+        "Namespace": "AWS/Lambda"
+       },
+       "Period": 300,
+       "Stat": "Sum"
+      },
+      "ReturnData": true
+     }
+    ],
+    "Threshold": 1,
+    "TreatMissingData": "notBreaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "VisionFactoryDashboard/LambdaErrorAlarm/Resource"
+   }
+  },
+  "LambdaDurationAlarmA8007F1F": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmDescription": "PDF processing is taking over 4 minutes (p95). May indicate large PDFs, slow AI responses, or network latency.",
+    "AlarmName": "vision-factory-processor-SlowProcessing",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 2,
+    "Metrics": [
+     {
+      "Id": "m1",
+      "Label": "Duration p95 (5m)",
+      "MetricStat": {
+       "Metric": {
+        "Dimensions": [
+         {
+          "Name": "FunctionName",
+          "Value": "vision-factory-processor"
+         }
+        ],
+        "MetricName": "Duration",
+        "Namespace": "AWS/Lambda"
+       },
+       "Period": 300,
+       "Stat": "p95"
+      },
+      "ReturnData": true
+     }
+    ],
+    "Threshold": 240000,
+    "TreatMissingData": "notBreaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "VisionFactoryDashboard/LambdaDurationAlarm/Resource"
+   }
+  },
+  "VisionFactoryDashboard1B831F7D": {
+   "Type": "AWS::CloudWatch::Dashboard",
+   "Properties": {
+    "DashboardBody": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"widgets\":[{\"type\":\"text\",\"width\":24,\"height\":2,\"x\":0,\"y\":0,\"properties\":{\"markdown\":\"# Vision Factory — PDF → JSON Pipeline\\n**Function:** `vision-factory-processor`  |  **All counters show last 24 hours.**  Scroll down for live error logs from the last run.\"}},{\"type\":\"metric\",\"width\":4,\"height\":4,\"x\":0,\"y\":2,\"properties\":{\"view\":\"singleValue\",\"title\":\"📄 Total Jobs (24h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"VisionFactory/Pipeline\",\"PDFInputs\",{\"color\":\"#1f77b4\",\"label\":\"Total Jobs\",\"period\":86400,\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"width\":4,\"height\":4,\"x\":4,\"y\":2,\"properties\":{\"view\":\"singleValue\",\"title\":\"✅ Succeeded (24h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"VisionFactory/Pipeline\",\"SuccessfulJSONOutputs\",{\"color\":\"#2ca02c\",\"label\":\"Succeeded\",\"period\":86400,\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"width\":4,\"height\":4,\"x\":8,\"y\":2,\"properties\":{\"view\":\"singleValue\",\"title\":\"❌ Pipeline Errors (24h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"VisionFactory/Pipeline\",\"PipelineErrors\",{\"color\":\"#d62728\",\"label\":\"Pipeline Errors\",\"period\":86400,\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"width\":4,\"height\":4,\"x\":12,\"y\":2,\"properties\":{\"view\":\"singleValue\",\"title\":\"💥 Lambda Crashes (24h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"vision-factory-processor\",{\"color\":\"#9467bd\",\"label\":\"Lambda Crashes\",\"period\":86400,\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"width\":4,\"height\":4,\"x\":16,\"y\":2,\"properties\":{\"view\":\"singleValue\",\"title\":\"⏸️ Throttled Invocations (24h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Throttles\",\"FunctionName\",\"vision-factory-processor\",{\"color\":\"#ff7f0e\",\"label\":\"Throttles\",\"period\":86400,\"stat\":\"Sum\"}]]}},{\"type\":\"text\",\"width\":24,\"height\":5,\"x\":0,\"y\":6,\"properties\":{\"markdown\":\"## What each number means\\n| Counter | Target | What to do if wrong |\\n|---|---|---|\\n| 📄 Total Jobs | Should rise as PDFs are submitted | Low = nothing is triggering the pipeline (check your API caller or S3 event) |\\n| ✅ Succeeded | Should equal Total Jobs | Gap = pipeline errors. Check **LOG ERRORS** section below |\\n| ❌ Pipeline Errors | Should be **zero** | Any value = check log errors. Usually bad PDF, API failure, or parsing issue |\\n| 💥 Lambda Crashes | Should be **zero** | Means Lambda OOM, timeout, or import error — check Lambda config |\\n| ⏸️ Throttled | Should be **zero** | Means concurrent limit hit — raise Lambda reserved concurrency |\\n\"}},{\"type\":\"alarm\",\"width\":8,\"height\":6,\"x\":0,\"y\":11,\"properties\":{\"title\":\"🚨 Active Alarms — Current Status\",\"alarms\":[\"",
+       {
+        "Fn::GetAtt": [
+         "PipelineErrorAlarm8A7D06EE",
+         "Arn"
+        ]
+       },
+       "\",\"",
+       {
+        "Fn::GetAtt": [
+         "LambdaErrorAlarm646BFA4C",
+         "Arn"
+        ]
+       },
+       "\",\"",
+       {
+        "Fn::GetAtt": [
+         "LambdaDurationAlarmA8007F1F",
+         "Arn"
+        ]
+       },
+       "\"]}},{\"type\":\"metric\",\"width\":16,\"height\":6,\"x\":8,\"y\":11,\"properties\":{\"view\":\"timeSeries\",\"title\":\"⏱ Processing Time — p95 (last 3h)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"vision-factory-processor\",{\"color\":\"#ff7f0e\",\"label\":\"p95 Duration (ms)\",\"stat\":\"p95\"}]],\"annotations\":{\"horizontal\":[{\"value\":240000,\"color\":\"#ff7f0e\",\"label\":\"4 min warning\",\"yAxis\":\"left\"}]},\"yAxis\":{\"left\":{\"label\":\"ms\",\"min\":0}},\"period\":10800}},{\"type\":\"metric\",\"width\":24,\"height\":6,\"x\":0,\"y\":17,\"properties\":{\"view\":\"timeSeries\",\"title\":\"✅ Successes vs ❌ Pipeline Errors (12h trend)\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"VisionFactory/Pipeline\",\"SuccessfulJSONOutputs\",{\"color\":\"#2ca02c\",\"label\":\"Successes\",\"stat\":\"Sum\"}],[\"VisionFactory/Pipeline\",\"PipelineErrors\",{\"color\":\"#d62728\",\"label\":\"Pipeline Errors\",\"stat\":\"Sum\"}]],\"yAxis\":{\"left\":{\"label\":\"Count\",\"min\":0}},\"period\":43200}},{\"type\":\"text\",\"width\":24,\"height\":3,\"x\":0,\"y\":23,\"properties\":{\"markdown\":\"## 🔍 Live Error Logs — Most Recent Errors\\nThe table below shows the last **20 ERROR and WARNING lines** from CloudWatch Logs.  \\nUse this to diagnose a specific failed job. Each line is timestamped.  \\n> **Tip:** If you see `PipelineErrors=1` above but no entries here, the error was a Lambda crash — check Lambda Crashes counter.\"}},{\"type\":\"log\",\"width\":24,\"height\":8,\"x\":0,\"y\":26,\"properties\":{\"view\":\"table\",\"title\":\"Last 20 ERROR / WARNING log lines\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"query\":\"SOURCE '/aws/lambda/vision-factory-processor' | fields @timestamp, @message\\n| filter @message like /ERROR|WARNING|error|exception|Exception|failed|Failed/\\n| sort @timestamp desc\\n| limit 20\"}},{\"type\":\"text\",\"width\":24,\"height\":2,\"x\":0,\"y\":34,\"properties\":{\"markdown\":\"## ✅ Recent Successful Completions\\nLines below confirm successful pipeline runs.  \\n> **What to look for:** Each line has the filename and how many pages were processed.\"}},{\"type\":\"log\",\"width\":24,\"height\":6,\"x\":0,\"y\":36,\"properties\":{\"view\":\"table\",\"title\":\"Last 10 successful completions\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"query\":\"SOURCE '/aws/lambda/vision-factory-processor' | fields @timestamp, @message\\n| filter @message like /SuccessfulJSONOutputs|Webhook delivered|Pipeline completed|statusCode.*200/\\n| sort @timestamp desc\\n| limit 10\"}}]}"
+      ]
+     ]
+    },
+    "DashboardName": "VisionFactory-PDF-Pipeline"
+   },
+   "Metadata": {
+    "aws:cdk:path": "VisionFactoryDashboard/VisionFactoryDashboard/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2I2wpAMBiAn8X99jumXIoHEA+g30Ybs9U2SfLuSLn6DgkkWQxRgLujjC9UyQHOziNbyLN6pszGd/RMwFkqtCupJv1JjU4MBi1/1x/XRZrDC6PDFArIg9lJSe2mvVxHaD/e7wS4MXQAAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "VisionFactoryDashboard/CDKMetadata/Default"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

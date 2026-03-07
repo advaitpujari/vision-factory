@@ -49,6 +49,39 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Custom CloudWatch Metrics Helper
+# ---------------------------------------------------------------------------
+_cloudwatch_client = None  # lazy-initialised
+
+
+def _emit_metrics(**metric_values: int) -> None:
+    """
+    Publish custom metrics to the ``VisionFactory/Pipeline`` CloudWatch namespace.
+
+    Typical call sites::
+
+        _emit_metrics(PDFInputs=1)              # on each invocation
+        _emit_metrics(SuccessfulJSONOutputs=1)  # pipeline success
+        _emit_metrics(PipelineErrors=1)          # pipeline failure
+
+    Non-fatal: swallows all exceptions so it never disrupts the pipeline.
+    """
+    global _cloudwatch_client
+    try:
+        if _cloudwatch_client is None:
+            _cloudwatch_client = boto3.client("cloudwatch")
+        _cloudwatch_client.put_metric_data(
+            Namespace="VisionFactory/Pipeline",
+            MetricData=[
+                {"MetricName": name, "Value": value, "Unit": "Count"}
+                for name, value in metric_values.items()
+            ],
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("_emit_metrics: could not publish metrics: %s", exc)
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Main Lambda entry point.
@@ -68,6 +101,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     logger.info("Lambda invocation received.")
     logger.debug("Event keys: %s", list(event.keys()))
+
+    # Track each invocation as one PDF input in CloudWatch
+    _emit_metrics(PDFInputs=1)
 
     # ------------------------------------------------------------------
     # 0. Pre-Execution Cleanup
@@ -214,6 +250,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Ensure execution logs accurately reflect webhook failure
                 result_payload["execution_logs"] = log_stream.getvalue()
 
+        _emit_metrics(SuccessfulJSONOutputs=1)
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
@@ -222,14 +259,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except _InputError as exc:
         logger.error("Input error: %s", exc)
+        _emit_metrics(PipelineErrors=1)
         return _error_response(400, str(exc), log_stream.getvalue(), webhook_url, job_id)
 
     except _PipelineError as exc:
         logger.error("Pipeline error: %s", exc)
+        _emit_metrics(PipelineErrors=1)
         return _error_response(500, f"Pipeline processing failed: {exc}", log_stream.getvalue(), webhook_url, job_id)
 
     except Exception as exc:  # pragma: no cover
         logger.exception("Unexpected error: %s", exc)
+        _emit_metrics(PipelineErrors=1)
         return _error_response(500, f"Internal server error: {exc}", log_stream.getvalue(), webhook_url, job_id)
 
     finally:
